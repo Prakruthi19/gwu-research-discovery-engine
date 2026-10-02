@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Scraper debug output (regenerated on demand via DEBUG_DUMP_HTML=1)
+scraper/debug_html/
+
+# Node / server / client (added in later build stages)
+node_modules/
+.env
+
+# Scraped data (regenerate with the scraper scripts)
+data/

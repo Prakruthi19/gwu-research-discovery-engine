@@ -1,0 +1,63 @@
+// Prisma schema for the GWU Research Discovery Engine.
+//
+// Teaching note (GraphQL decoupling): nothing in this file is GraphQL.
+// Prisma owns the database. The GraphQL layer (server/src/schema.js) is a
+// separate API contract whose resolvers happen to call this client. You
+// could swap Postgres for another DB here without touching the GraphQL SDL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Faculty {
+  id        Int      @id @default(autoincrement())
+  name      String
+  // school = the GWU college/school (e.g. "Columbian College of Arts and
+  // Sciences"); department is the finer-grained unit within it.
+  school       String?
+  department   String?
+  title        String?
+  email        String?
+  bio          String?
+  // profileUrl is the natural unique key in the scraped data (emails have a
+  // few duplicates, URLs are 1:1), so the seed upserts on it.
+  profileUrl   String   @unique
+  imageUrl     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  researchInterests FacultyResearchInterest[]
+}
+
+model ResearchInterest {
+  id       Int      @id @default(autoincrement())
+  name     String   @unique
+
+  faculty  FacultyResearchInterest[]
+  
+}
+
+// Explicit join table (not Prisma's implicit many-to-many) so we can later
+// add fields like `confidence` or `source` to the relationship itself
+// without a schema rewrite.
+model FacultyResearchInterest {
+  facultyId          Int
+  researchInterestId Int
+
+  // Provenance of this faculty<->interest link:
+  //   "scraped" = came from the GWU site (the original seed)
+  //   "llm"     = inferred from the bio by an LLM (enrich_interests.js)
+  // Lets us distinguish/roll back inferred tags without touching scraped ones.
+  source     String @default("scraped")
+  confidence Float? // optional 0..1 score the LLM assigned (null for scraped)
+
+  faculty          Faculty          @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  researchInterest ResearchInterest @relation(fields: [researchInterestId], references: [id], onDelete: Cascade)
+
+  @@id([facultyId, researchInterestId])
+}

@@ -1,0 +1,76 @@
+/* ── Design tokens (GW brand + card-catalog concept) ───────────────────── */
+:root {
+  --gw-blue: #00316b;       /* primary */
+  --gw-buff: #efe5d0;       /* parchment background */
+  --paper: #ffffff;
+  --ink: #1a1a1a;           /* body text */
+  --accent: #a6192e;        /* sparing — matched-interest stamps only */
+
+  --ink-muted: #4a4a4a;
+  --rule: #d8ccb4;          /* hairline rules on parchment */
+  --blue-tint: #e7edf4;
+
+  --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --maxw: 760px;
+  --radius: 4px;
+
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--sans);
+  color: var(--ink);
+  background-color: var(--gw-buff);
+  /* Faint card-catalog ruling so the parchment doesn't read as flat SaaS. */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 31px,
+    rgba(0, 49, 107, 0.05) 31px,
+    rgba(0, 49, 107, 0.05) 32px
+  );
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--serif);
+  font-weight: 600;
+  line-height: 1.15;
+  margin: 0;
+}
+
+a {
+  color: var(--gw-blue);
+}
+
+/* Visible keyboard focus everywhere. */
+:focus-visible {
+  outline: 3px solid var(--gw-blue);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
