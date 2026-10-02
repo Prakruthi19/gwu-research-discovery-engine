@@ -3,7 +3,7 @@
 //   faculty with NO scraped interests  ->  OpenAI (read bio/title)
 //     ->  inferred interests  ->  Prisma  ->  Postgres (source="llm")
 //
-// Scoped, batched, idempotent, and reversible. See ../../README.md for the
+// Scoped, batched, idempotent, and reversible. See ../../docs/llm-enrichment.md for the
 // strategy + cost-reduction rationale.
 //
 // Usage (from server/):

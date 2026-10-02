@@ -1,0 +1,19 @@
+# Monthly, grouped dependency updates: at most one PR per ecosystem per month,
+# each verified by the CI/CD workflow before you merge it.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /server
+    schedule: { interval: monthly }
+    groups:
+      server-deps: { patterns: ["*"] }
+  - package-ecosystem: npm
+    directory: /client
+    schedule: { interval: monthly }
+    groups:
+      client-deps: { patterns: ["*"] }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }
+    groups:
+      actions: { patterns: ["*"] }

@@ -1,0 +1,150 @@
+# CI/CD for the GWU Research Discovery Engine.
+#
+#   pull request  ─▶  server tests · client lint+build · scraper lint
+#   push to main  ─▶  same checks ─▶ (all green) ─▶ deploy client to GitHub Pages
+#                                                 └▶ trigger Render deploy of the API
+#
+# Cost: $0. Public repos get unlimited GitHub Actions minutes; private repos
+# get 2,000 free minutes/month and a full run here takes ~3 runner-minutes.
+# Deploy jobs are skipped until you configure them (see docs/DEPLOYMENT.md),
+# so CI is green from day one.
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to the same branch/PR cancels the in-flight run (saves minutes).
+# Runs on main are never cancelled mid-deploy.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: Server · migrate, seed, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gwu_research
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gwu_research?schema=public
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npx prisma validate
+      # Applies the committed migrations exactly as production will, so a
+      # broken migration fails here instead of on deploy.
+      - run: npx prisma migrate deploy
+      - run: npm run seed
+      - run: npm test
+
+  client:
+    name: Client · lint, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  scraper:
+    name: Scraper · lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: pipx run ruff check scraper gwu_scraper.py
+
+  # ── Deploy (main only, after every check passes) ─────────────────────────
+
+  deploy-client:
+    name: Deploy client → GitHub Pages
+    needs: [server, client, scraper]
+    # Runs once the VITE_GRAPHQL_URL repository variable points at the API.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.VITE_GRAPHQL_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+        working-directory: client
+      - run: npm run build
+        working-directory: client
+        env:
+          VITE_GRAPHQL_URL: ${{ vars.VITE_GRAPHQL_URL }}
+          # Project Pages sites live under /<repo-name>/. If you add a custom
+          # domain, set a VITE_BASE repository variable to "/".
+          VITE_BASE: ${{ vars.VITE_BASE || format('/{0}/', github.event.repository.name) }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: client/dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  deploy-server:
+    name: Deploy API → Render
+    needs: [server, client, scraper]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+    steps:
+      # Render's own auto-deploy is off (render.yaml), so only commits that
+      # passed CI reach production. Render runs `prisma migrate deploy` in
+      # its build step before switching traffic to the new version.
+      - name: Trigger Render deploy
+        if: env.RENDER_DEPLOY_HOOK_URL != ''
+        run: curl --fail --silent --show-error -X POST "$RENDER_DEPLOY_HOOK_URL" > /dev/null
+      - name: Skip (no deploy hook configured)
+        if: env.RENDER_DEPLOY_HOOK_URL == ''
+        run: echo "RENDER_DEPLOY_HOOK_URL secret not set; skipping API deploy."

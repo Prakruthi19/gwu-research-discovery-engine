@@ -10,7 +10,9 @@
     "seed": "node prisma/seed.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "test": "node --test",
+    "db:deploy": "prisma migrate deploy"
   },
   "dependencies": {
     "@apollo/server": "^5.0.0",
@@ -22,5 +24,8 @@
   "devDependencies": {
     "nodemon": "^3.1.4",
     "prisma": "^6.0.0"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

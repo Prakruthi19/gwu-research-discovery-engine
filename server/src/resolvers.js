@@ -1,4 +1,9 @@
+import { GraphQLError } from "graphql";
+
 import { prisma } from "./prismaClient.js";
+
+// Search terms are short phrases; anything longer is a mistake or abuse.
+export const MAX_QUERY_LENGTH = 100;
 
 // --- The N+1 problem, and how this file avoids it ---------------------------
 //
@@ -37,6 +42,26 @@ function flattenInterests(faculty) {
   };
 }
 
+// Wraps every mutation resolver so it refuses to run unless the request
+// context says writes are allowed (see mutationsAllowed() in server.js).
+// Doing it once here keeps each mutation focused on its actual job.
+function guardMutations(mutations) {
+  return Object.fromEntries(
+    Object.entries(mutations).map(([name, resolve]) => [
+      name,
+      (parent, args, context, info) => {
+        if (!context?.allowMutations) {
+          throw new GraphQLError(
+            "Mutations are disabled on this deployment (read-only API).",
+            { extensions: { code: "FORBIDDEN" } }
+          );
+        }
+        return resolve(parent, args, context, info);
+      },
+    ])
+  );
+}
+
 export const resolvers = {
   Query: {
     allFaculty: async (_parent, { department }) => {
@@ -63,6 +88,12 @@ export const resolvers = {
     facultyBySearch: async (_parent, { query }) => {
       const q = query.trim();
       if (!q) return [];
+      if (q.length > MAX_QUERY_LENGTH) {
+        throw new GraphQLError(
+          `Search query must be at most ${MAX_QUERY_LENGTH} characters.`,
+          { extensions: { code: "BAD_USER_INPUT" } }
+        );
+      }
 
       const insensitive = { contains: q, mode: "insensitive" };
       const faculty = await prisma.faculty.findMany({
@@ -110,7 +141,7 @@ export const resolvers = {
     },
   },
 
-  Mutation: {
+  Mutation: guardMutations({
     createFaculty: async (_parent, args) => {
       const { researchInterests = [], ...data } = args;
       const faculty = await prisma.faculty.create({
@@ -200,5 +231,5 @@ export const resolvers = {
       });
       return flattenInterests(faculty);
     },
-  },
+  }),
 };

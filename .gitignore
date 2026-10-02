@@ -12,3 +12,6 @@ node_modules/
 
 # Scraped data (regenerate with the scraper scripts)
 data/
+
+# Tooling caches
+.ruff_cache/

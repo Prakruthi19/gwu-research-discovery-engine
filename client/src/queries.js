@@ -69,3 +69,11 @@ export const FACULTY_BY_ID = gql`
     }
   }
 `;
+
+// Cheapest possible operation: no resolvers, no database. Used to wake the
+// API host on page load.
+export const PING = gql`
+  query Ping {
+    __typename
+  }
+`;

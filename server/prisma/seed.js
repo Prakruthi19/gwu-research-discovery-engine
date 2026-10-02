@@ -12,7 +12,11 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DETAILS_PATH = join(__dirname, "..", "..", "data", "faculty_details.json");
+// SEED_DATA_PATH lets you seed a hosted database from a JSON file kept
+// anywhere (the default data/ folder is gitignored).
+const DETAILS_PATH =
+  process.env.SEED_DATA_PATH ??
+  join(__dirname, "..", "..", "data", "faculty_details.json");
 
 const SAMPLE_FACULTY = [
   {
@@ -89,7 +93,7 @@ function loadFaculty() {
     console.log(`Seeding from scraped data: ${raw.length} records.`);
     return raw;
   }
-  console.log("No data/faculty_details.json found — using sample faculty.");
+  console.log(`No ${DETAILS_PATH} found — using sample faculty.`);
   return SAMPLE_FACULTY;
 }
 

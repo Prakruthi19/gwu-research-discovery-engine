@@ -4,18 +4,20 @@
 // `resolvers` (how to fulfill it). Prisma/Postgres live entirely inside the
 // resolvers — Apollo never sees them.
 import "dotenv/config";
-import { ApolloServer } from "@apollo/server";
 import { startStandaloneServer } from "@apollo/server/standalone";
 
-import { typeDefs } from "./schema.js";
-import { resolvers } from "./resolvers.js";
+import { createApolloServer, mutationsAllowed } from "./server.js";
 
-const server = new ApolloServer({ typeDefs, resolvers });
+const server = createApolloServer();
 
 const port = Number(process.env.PORT) || 4000;
+const allowMutations = mutationsAllowed();
 
 const { url } = await startStandaloneServer(server, {
   listen: { port },
+  // Per-request context, available to every resolver as its 3rd argument.
+  context: async () => ({ allowMutations }),
 });
 
 console.log(`🚀 GWU Research Discovery GraphQL ready at ${url}`);
+console.log(`   mutations ${allowMutations ? "ENABLED" : "disabled (read-only)"}`);

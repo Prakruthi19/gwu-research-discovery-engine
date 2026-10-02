@@ -1,0 +1,25 @@
+# Render Blueprint for the GraphQL API (free plan).
+# Create it from the Render dashboard: New → Blueprint → pick this repo.
+# See docs/DEPLOYMENT.md for the full walkthrough.
+services:
+  - type: web
+    name: gwu-research-api
+    runtime: node
+    plan: free
+    rootDir: server
+    # Migrations run during the build so a failed migration aborts the deploy
+    # and the previous version keeps serving.
+    buildCommand: npm ci && npx prisma generate && npx prisma migrate deploy
+    startCommand: node src/index.js
+    # Deploys are triggered by the CI/CD workflow's deploy hook, only after
+    # all checks pass on main. (Render's push-to-deploy would skip CI.)
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      # Neon (or any Postgres) connection string. Set in the dashboard;
+      # never committed.
+      - key: DATABASE_URL
+        sync: false

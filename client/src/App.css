@@ -126,6 +126,42 @@
   padding: 2rem 1rem;
 }
 
+.results__note {
+  display: block;
+  max-width: 30rem;
+  margin: 0.75rem auto 0;
+  font-family: var(--sans);
+  font-size: 0.85rem;
+}
+
+/* Suggested searches: plain catalog tags you can click. */
+.suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.suggestions__item {
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  padding: 0.35rem 0.8rem;
+  color: var(--gw-blue);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.suggestions__item:hover {
+  border-color: var(--gw-blue);
+  background: var(--blue-tint);
+}
+
 .results__status--error {
   color: var(--accent);
 }
