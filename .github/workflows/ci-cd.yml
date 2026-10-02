@@ -89,7 +89,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      - run: pipx run ruff check scraper gwu_scraper.py
+      - run: pipx run ruff==0.15.20 check scraper gwu_scraper.py
 
   # ── Deploy (main only, after every check passes) ─────────────────────────
 
