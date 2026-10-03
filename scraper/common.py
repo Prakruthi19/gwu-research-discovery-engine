@@ -40,6 +40,91 @@ DEBUG_DUMP_HTML = os.environ.get("DEBUG_DUMP_HTML") == "1"
 REQUEST_DELAY_MS = int(os.environ.get("SCRAPER_DELAY_MS", "600"))
 NAV_TIMEOUT_MS = 45000
 
+# Identifies the crawler honestly (the suffix) so site admins can see who we are.
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0 Safari/537.36 "
+    "GWU-Research-Discovery-Engine/edu-scraper "
+    "(+https://github.com/Prakruthi19/gwu-research-discovery-engine)"
+)
+
+
+# --- robots.txt ------------------------------------------------------------
+# Every URL is checked against the host's robots.txt before we request it.
+# We match the "*" group (we are not a named search engine) and implement
+# RFC 9309 matching ourselves, because urllib.robotparser ignores the `*` and
+# `$` wildcards GWU's sites use (e.g. `Disallow: */publications$`).
+#   * robots.txt 404/410  -> everything allowed (standard behaviour)
+#   * unreachable / 5xx   -> everything disallowed (fail closed)
+_robots_cache: dict[str, list[tuple[bool, str]] | None] = {}
+
+
+def _parse_robots(text: str) -> list[tuple[bool, str]]:
+    """Return (allow?, pattern) rules from the groups that apply to '*'."""
+    rules: list[tuple[bool, str]] = []
+    agents: list[str] = []
+    in_rules = False
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if ":" not in line:
+            continue
+        key, value = (part.strip() for part in line.split(":", 1))
+        key = key.lower()
+        if key == "user-agent":
+            if in_rules:  # a new group starts after a group's rules
+                agents, in_rules = [], False
+            agents.append(value.lower())
+        elif key in ("allow", "disallow"):
+            in_rules = True
+            if "*" in agents and value:
+                rules.append((key == "allow", value))
+    return rules
+
+
+def _rule_matches(pattern: str, path: str) -> bool:
+    anchored = pattern.endswith("$")
+    body = re.escape(pattern.rstrip("$")).replace(r"\*", ".*")
+    return re.match(body + ("$" if anchored else ""), path) is not None
+
+
+def _load_robots(origin: str) -> list[tuple[bool, str]] | None:
+    """Rules for an origin, or None when robots.txt couldn't be read."""
+    if origin in _robots_cache:
+        return _robots_cache[origin]
+    from urllib.error import HTTPError
+    from urllib.request import Request, urlopen
+
+    rules: list[tuple[bool, str]] | None
+    try:
+        req = Request(f"{origin}/robots.txt", headers={"User-Agent": USER_AGENT})
+        with urlopen(req, timeout=20) as resp:
+            rules = _parse_robots(resp.read().decode("utf-8", "replace"))
+    except HTTPError as exc:
+        rules = [] if 400 <= exc.code < 500 else None
+    except Exception:
+        rules = None
+    _robots_cache[origin] = rules
+    return rules
+
+
+def robots_allowed(url: str) -> bool:
+    """True if the host's robots.txt lets a generic crawler fetch this URL."""
+    from urllib.parse import urlparse
+
+    parts = urlparse(url)
+    rules = _load_robots(f"{parts.scheme}://{parts.netloc}")
+    if rules is None:
+        return False
+    path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
+    # Longest matching rule wins; on a tie, Allow wins (RFC 9309 §2.2.2).
+    best: tuple[int, bool] | None = None
+    for allow, pattern in rules:
+        if _rule_matches(pattern, path):
+            candidate = (len(pattern), allow)
+            if best is None or candidate > best:
+                best = candidate
+    return True if best is None else best[1]
+
 
 # --- Browser ---------------------------------------------------------------
 @asynccontextmanager
@@ -47,13 +132,7 @@ async def browser_page():
     """Yield a ready-to-use Playwright page, cleaning up afterwards."""
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/120.0 Safari/537.36 "
-                "GWU-Research-Discovery-Engine/edu-scraper"
-            )
-        )
+        context = await browser.new_context(user_agent=USER_AGENT)
         page = await context.new_page()
         page.set_default_timeout(NAV_TIMEOUT_MS)
         try:
@@ -64,6 +143,9 @@ async def browser_page():
 
 async def goto_settled(page: Page, url: str) -> bool:
     """Navigate and wait for the SPA/Drupal content to settle. Returns success."""
+    if not robots_allowed(url):
+        print(f"    ! skipped (disallowed by robots.txt): {url}")
+        return False
     try:
         await page.goto(url, timeout=NAV_TIMEOUT_MS, wait_until="domcontentloaded")
     except Exception as exc:  # noqa: BLE001 - fail soft, log, keep going

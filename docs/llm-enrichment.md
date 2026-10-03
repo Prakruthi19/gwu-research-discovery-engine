@@ -18,6 +18,42 @@ Only the faculty who **lack** scraped interests — the 67 above. Everyone who
 already has good tags is skipped (don't pay to re-derive what we have). Where a
 bio exists (32 of the 67) we use it; otherwise we fall back to the title.
 
+## Privacy guardrails
+The model never learns **who** it is reading about. Both sides of the API call
+go through `server/scripts/enrichment_guardrails.js` (unit-tested in
+`server/test/guardrails.test.js`, run with `npm run test:unit`).
+
+**Before sending (input):**
+
+| Guardrail | What it does |
+|-----------|--------------|
+| Field whitelist | Only `title` + `bio` are sent. Name, email, profile URL, photo, school and department never leave the machine. |
+| Pseudonymous ids | Each person is `p1`, `p2`, … for one batch. The id → person map stays in memory and is never sent, so the request contains no link back to a real profile. |
+| Redaction | Emails (including `name [at] gwu [dot] edu`), phone numbers and links in the bio become `[EMAIL]`, `[PHONE]`, `[LINK]`. The person's own name becomes `[NAME]`. |
+| Invisible-text strip | Zero-width and control characters are removed so nothing hidden rides along. |
+| Length caps | Bio ≤ 1,500 chars, title ≤ 200 chars, batch ≤ 25 people. |
+| `store: false` | Asks OpenAI not to keep the request in stored completions. |
+
+**After receiving (output), treated as untrusted input:**
+
+| Guardrail | What it does |
+|-----------|--------------|
+| Strict JSON schema | The reply must match an exact shape; refusals and truncated replies fail the batch. |
+| Id check | Answers for unknown or duplicate ids are dropped, so a reply can't write to anyone outside the batch. |
+| Tag checks | Rejects tags that look like emails, phones or links, contain redaction markers or odd characters, exceed 60 chars / 6 words, or have confidence outside 0–1 or below `--min-confidence` (default 0.5). At most 6 tags per person, deduplicated. |
+| Prompt-injection rule | The prompt says bios are data, not instructions. The output checks above are the real defence. |
+| Scraped tags win | An LLM tag never overwrites a link GWU itself published. |
+
+See exactly what would be sent, with no API call and no database needed:
+
+```bash
+node scripts/enrich_interests.js --preview --limit 3
+```
+
+Residual risk: a very specific job title (e.g. "Director, Community Counseling
+Services Center") can still hint at who someone is. Titles are kept because they
+carry most of the research signal for people without a bio.
+
 ## Safeguard: no hallucinated interests
 Many of the no-interest faculty are **administrative staff** ("Assistant
 Director of Admissions", "Program Coordinator"), not researchers. The prompt
@@ -44,9 +80,9 @@ The job is tiny (cents), but it's built to scale cheaply:
 | Technique | What it does |
 |-----------|--------------|
 | **Pre-filter** | Only process faculty missing interests — skip the rest entirely (biggest saving). |
-| **Trim payload** | Send only `name + title + bio`, not the whole record. |
+| **Trim payload** | Send only `title + bio` (redacted), not the whole record. |
 | **Batch ~12 per request** | Amortize the system-prompt tokens across many faculty instead of re-paying per call. The middle ground between one-giant-call (fragile) and one-call-each (wasteful). |
-| **Key results by `profile_url`** | So a batched response maps cleanly back to records. |
+| **Key results by pseudonymous id** | `p1`, `p2`, … map a batched response back to records without sending anything identifying. |
 | **Mini model** (`gpt-4o-mini`) | ~15–20× cheaper than flagship; plenty for keyword extraction. |
 | **JSON mode + capped output** | Strict JSON, max 6 interests each — no wasted tokens, no re-parsing. |
 | **Idempotent** | Re-running skips faculty that already have `source="llm"` rows, so you never pay twice. |
@@ -74,4 +110,4 @@ node scripts/enrich_interests.js
 ```
 
 Flags: `--limit N` (process at most N faculty), `--dry-run` (no DB writes),
-`--batch N` (faculty per API request, default 12).
+`--batch N` (faculty per API request, default 12, max 25), `--preview` (print the redacted payload, no API call), `--min-confidence X` (default 0.5).

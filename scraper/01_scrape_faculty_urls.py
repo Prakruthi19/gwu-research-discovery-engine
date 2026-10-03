@@ -36,6 +36,11 @@ async def collect_facultyprofiles(page, site: SiteConfig) -> list[dict]:
     """Pull every indexed expert from the portal's JSON API (with tags)."""
     if not await common.goto_settled(page, f"{site.base_url}/search"):
         return []
+    # The JSON endpoint is fetched from inside the page, bypassing goto_settled,
+    # so it gets its own robots.txt check.
+    if not common.robots_allowed(f"{site.base_url}/api/users"):
+        print("    ! skipped (disallowed by robots.txt): /api/users")
+        return []
 
     seeds: list[dict] = []
     start_from = 0

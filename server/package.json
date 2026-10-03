@@ -12,6 +12,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "test": "node --test",
+    "test:unit": "node --test test/guardrails.test.js",
     "db:deploy": "prisma migrate deploy"
   },
   "dependencies": {
